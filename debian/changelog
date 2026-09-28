@@ -1,3 +1,10 @@
+golang-github-danos-config (1.9danos1) unstable; urgency=medium
+
+  * debian/control: golang-dbus-dev renamed to golang-github-godbus-dbus-dev
+    (see golang-github-godbus-dbus's own changelog for why).
+
+ -- DANOS <noreply@danos.io>  Mon, 28 Sep 2026 09:15:00 +0800
+
 golang-github-danos-config (1.9) unstable; urgency=medium
 
   [ William Ivory ]
