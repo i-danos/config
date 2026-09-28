@@ -1,4 +1,29 @@
-golang-github-danos-config (1.9danos1) unstable; urgency=medium
+golang-github-danos-config (1.9danos2) unstable; urgency=medium
+
+  * schema/component_mgr.go: switch to Debian trixie's real golang-dbus-dev
+    (5.1.0) instead of this project's v4-era golang-github-godbus-dbus-dev
+    fork. The import path itself stays the plain "github.com/godbus/dbus":
+    confirmed by dpkg -L that Debian's package installs its v5 source under
+    that same unversioned GOPATH path, not github.com/godbus/dbus/v5 (a
+    packaging convention, not something upstream's own go.mod declares).
+    This package's only use of the package is a plain dbus.Error type
+    assertion for error handling -- not any of the fork's
+    Handler/SignalHandler extensions -- and that type is identical in real
+    upstream v5, confirmed by a local build and full test pass against the
+    real golang-dbus-dev package.
+  * This was blocking the OBS build outright, the same way it blocked vci
+    before vci's own fix: this package's build root needed both the v4 fork
+    (for its own direct import) and Debian's real v5 (transitively, via
+    golang-github-danos-vci-dev's own golang-go-systemd-dev dependency),
+    which cannot coexist -- "dpkg: trying to overwrite '.../godbus/dbus/
+    auth.go', which is also in package golang-dbus-dev (5.1.0-1)". Here the
+    fix is simpler than vci's vendoring: since this package's own usage
+    never needed the fork's extensions, moving to the real v5 outright
+    removes the conflict instead of working around it.
+
+ -- DANOS <noreply@danos.io>  Mon, 28 Sep 2026 11:15:00 +0800
+
+golang-github-danos-config (1.9) unstable; urgency=medium
 
   * debian/control: golang-dbus-dev renamed to golang-github-godbus-dbus-dev
     (see golang-github-godbus-dbus's own changelog for why).
