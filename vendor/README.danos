@@ -1,0 +1,44 @@
+Vendored packages under this directory
+=======================================
+
+github.com/danos/godbus/dbus (from golang-github-godbus-dbus, formerly
+golang-dbus) and github.com/danos/objtree (from
+golang-github-jsouthworth-objtree) are vendored here, under a private
+import path, instead of being separate Build-Depends.
+
+Why: dbus_transport.go uses this project's fork of godbus/dbus 4.0.0
+(github.com/godbus/dbus, unversioned import path), which adds a
+server-side Handler/SignalHandler extension API. Debian trixie's own
+golang-dbus-dev (5.1.0, github.com/godbus/dbus/v5) is needed
+transitively by golang-go-systemd-dev, which services.go imports
+directly. Both packages install their Go sources to the same physical
+path under /usr/share/gocode/src/github.com/godbus/dbus/ (Debian's own
+packaging quirk, not a versioned subdirectory), so they cannot be
+installed in the same build root at the same time: "dpkg: trying to
+overwrite '.../godbus/dbus/auth.go', which is also in package
+golang-dbus-dev (5.1.0-1)".
+
+Vendoring the v4 fork under a path Debian's packaging never touches
+(github.com/danos/godbus/dbus, not github.com/godbus/dbus) avoids the
+collision without touching the Handler/SignalHandler API (confirmed
+present with identical signatures in real upstream v5 by comparing
+against github.com/godbus/dbus v5.1.0 directly) or vci's own dbus
+semantics.
+
+github.com/danos/objtree is vendored alongside it, pointed at the same
+private dbus path, because objtree.NewAnonymousBusManager's own
+function signature (func(dbus.Handler, dbus.SignalHandler) (*dbus.Conn,
+error)) requires exact Go type identity with whichever dbus package the
+caller uses -- vci could not pass its own connectFn to the real,
+separately-packaged objtree without both agreeing on the same dbus
+import path.
+
+Both copies carry this project's own patches
+(golang-github-godbus-dbus's synchronous-send.patch and
+parse-dbus-address-correctly.patch) applied directly, since there is no
+quilt series for a vendor/ tree.
+
+If either upstream (or this project's own fork) changes, refresh both
+copies from their source packages and reapply the note above; they are
+not expected to drift from golang-github-godbus-dbus and
+golang-github-jsouthworth-objtree's own git history otherwise.

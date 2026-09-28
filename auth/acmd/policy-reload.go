@@ -6,8 +6,8 @@
 package acmd
 
 import (
-	"github.com/godbus/dbus"
-	"github.com/jsouthworth/objtree"
+	"github.com/danos/godbus/dbus"
+	"github.com/danos/objtree"
 )
 
 type dBusConnector func(dbus.Handler, dbus.SignalHandler) (*dbus.Conn, error)

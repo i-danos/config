@@ -18,13 +18,9 @@ import (
 	rfc7951data "github.com/danos/encoding/rfc7951/data"
 	"github.com/danos/mgmterror"
 	"github.com/danos/utils/exec"
+	"github.com/danos/godbus/dbus"
 	"github.com/danos/yang/data/datanode"
 	yang "github.com/danos/yang/schema"
-	// Debian's real golang-dbus-dev (5.1.0, upstream module path
-	// github.com/godbus/dbus/v5) installs its source under the plain
-	// unversioned GOPATH path github.com/godbus/dbus, not .../v5 -- a
-	// packaging quirk, not something upstream's own go.mod declares.
-	"github.com/godbus/dbus"
 )
 
 type ConfigMultiplexerFn func([][]byte, ModelSet) (*data.Node, error)

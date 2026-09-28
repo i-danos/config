@@ -7,7 +7,6 @@ Build-Depends:
  dh-golang (>= 1.18),
  dh-vci,
  golang (>= 1.6),
- golang-dbus-dev,
  golang-github-danos-aaa-dev (>= 2.0),
  golang-github-danos-encoding-rfc7951-dev,
  golang-github-danos-mgmterror-dev,
@@ -27,7 +26,6 @@ Standards-Version: 3.9.8
 Package: golang-github-danos-config-dev
 Architecture: all
 Depends:
- golang-dbus-dev,
  golang-github-danos-aaa-dev,
  golang-github-danos-encoding-rfc7951-dev,
  golang-github-danos-mgmterror-dev,

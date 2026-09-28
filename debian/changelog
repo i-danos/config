@@ -1,3 +1,30 @@
+golang-github-danos-config (1.9danos3) unstable; urgency=medium
+
+  * Correct danos2: it only found and fixed schema/component_mgr.go's use of
+    github.com/godbus/dbus, missing auth/acmd/policy-reload.go's own,
+    separate use of the fork's Handler/SignalHandler extensions (a
+    recursive grep across the tree, not just one level deep, finds both).
+    Worse, danos2's fix was a real correctness bug, not just incomplete:
+    component_mgr.go's `err.(dbus.Error)` assertion checks errors returned
+    by cm.SetConfigForModel, whose real implementation is vci's own
+    dbusTransport (vendored, using the fork's dbus.Conn) -- so switching
+    just that one file to real v5's dbus.Error made the type assertion
+    permanently fail at runtime (compiles fine, silently never matches).
+  * Fix instead mirrors vci's own: vendor github.com/danos/godbus/dbus and
+    github.com/danos/objtree under vendor/ (copied directly from vci's
+    vendor tree, same private import paths, same patches already applied),
+    and repoint both policy-reload.go and component_mgr.go at the vendored
+    copies -- restoring the single consistent dbus type this package always
+    had before, rather than splitting it across two incompatible ones.
+    Drops golang-dbus-dev and golang-github-godbus-dbus-dev from
+    debian/control entirely; the real v5 package is still pulled in
+    transitively via golang-github-danos-vci-dev's own
+    golang-go-systemd-dev dependency, satisfying whatever needed it, but
+    this package no longer needs to reference either dbus package itself.
+    Verified: `go build ./...` and `go test ./...` both pass locally.
+
+ -- DANOS <noreply@danos.io>  Mon, 28 Sep 2026 11:30:00 +0800
+
 golang-github-danos-config (1.9danos2) unstable; urgency=medium
 
   * schema/component_mgr.go: switch to Debian trixie's real golang-dbus-dev
