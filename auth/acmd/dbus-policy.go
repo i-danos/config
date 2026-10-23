@@ -150,7 +150,7 @@ func (a *AcmV1Config) translateToPolicy() ([]byte, error) {
 	}
 
 	// Translate Notification rules
-	for _, r := range a.NotificationRuleset.Rule {
+	for _, r := range a.notificationRules() {
 		rl = newRule().action(r.Action.String())
 		if r.Notification != nil && *r.Notification != "*" {
 			rl = rl.singleNotification(*r.Notification)
