@@ -113,6 +113,9 @@ type compMgr struct {
 	ServiceManager
 
 	compMappings *ComponentMappings
+
+	// Calls whose caller stopped waiting (compensating entry points only).
+	pending pendingTable
 }
 
 var _ OperationsManager = (*compMgr)(nil)
@@ -193,6 +196,11 @@ func (cm *compMgr) listActiveOrConfiguredModels(
 	return out
 }
 
+// checkCallDeadline bounds the wait for one component's validation (Check)
+// reply (A02 stage 3-F, F5). Like every component call it cannot be recalled;
+// only the caller stops waiting. It is a variable so tests can shorten it.
+var checkCallDeadline = 30 * time.Second
+
 func (cm *compMgr) ComponentValidation(
 	m ModelSet,
 	dn datanode.DataNode,
@@ -212,7 +220,22 @@ func (cm *compMgr) ComponentValidation(
 		comp := cm.compMappings.Component(modelName)
 		jsonTree := comp.FilterCheckTree(m, dn)
 
-		err := cm.CheckConfigForModel(modelName, string(jsonTree))
+		// The call cannot be recalled; on the deadline the commit only stops
+		// waiting. Check is read-only, so the abandoned call is harmless. It is
+		// deliberately NOT registered in cm.pending: that table makes a later
+		// Set wait for an earlier unsettled Set (a late write could overwrite),
+		// which a read-only Check cannot do, and registering it would make an
+		// already unresponsive component also skip every later Set as unsettled.
+		err, pc := callBounded(checkCallDeadline, func() error {
+			return cm.CheckConfigForModel(modelName, string(jsonTree))
+		})
+		if pc != nil {
+			e := mgmterror.NewOperationFailedApplicationError()
+			e.Message = fmt.Sprintf(
+				"component %s did not answer the configuration check within %s; "+
+					"nothing was applied", modelName, checkCallDeadline)
+			err = e
+		}
 		if err != nil {
 			errs = append(errs, err)
 		}
