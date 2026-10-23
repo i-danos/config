@@ -1,3 +1,29 @@
+golang-github-danos-config (1.9danos6) unstable; urgency=medium
+
+  * schema: component compensation on ordinary commit failure (A02 phase 3).
+    The failing component is compensated first, then the components applied
+    in the same commit in reverse order, with the previous configuration as
+    baseline; every step is reported. Calls to components are bounded (a
+    timeout only stops waiting, the call cannot be recalled) and an
+    unanswered Check fails the commit after 30 s with nothing applied.
+    Dispatches are recorded through a recorder interface so configd can keep
+    a crash-safe journal; unknown outcomes are verified by reading the
+    component back and comparing with sameConfig.
+  * schema: sameConfig normalises through the YANG schema and compares
+    lists and leaf-lists order-independently except "ordered-by user" ones,
+    whose order is part of the configuration; duplicates are not collapsed.
+  * auth/acmd: the getter returns exactly what configd delivered. Presence
+    containers stay {} and never-sent leaves (the *-default actions, rule
+    action/operation, group and module names) are omitted instead of being
+    emitted as empty strings, which made read-back verification fail.
+  * Tests: compensation, bounded Check, sameConfig (including a run against
+    the real acm YANG when DANOS_YANG_DIR is set; skipped otherwise), and a
+    getter round-trip over 15 payloads.
+  * Version note: danos4 and danos5 were intermediate local builds and were
+    never published.
+
+ -- i-danos dev <dev@i-danos.dev>  Fri, 23 Oct 2026 12:00:00 -0700
+
 golang-github-danos-config (1.9danos3) unstable; urgency=medium
 
   * Correct danos2: it only found and fixed schema/component_mgr.go's use of
