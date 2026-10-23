@@ -56,6 +56,9 @@ type ComponentMappings struct {
 	nsMap             map[string]string
 	orderedComponents []string
 	defaultComponent  string
+	// prerequisites[model] = every component (model name) that must be
+	// applied before it: the transitive closure of the Before/After edges.
+	prerequisites map[string][]string
 }
 
 func (cm *ComponentMappings) Components() map[string]*component {
@@ -90,7 +93,7 @@ func CreateComponentNSMappings(
 
 	componentMap := getComponentMap(modelToNamespaceMap)
 
-	orderedComponents, err := getOrderedComponentsList(
+	orderedComponents, prerequisites, err := getOrderedComponentsList(
 		modelSetName, defaultComponent, compConfig)
 	if err != nil {
 		return nil, err
@@ -109,6 +112,7 @@ func CreateComponentNSMappings(
 			nsMap:             globalNSMap,
 			orderedComponents: orderedComponents,
 			defaultComponent:  defaultComponent,
+			prerequisites:     prerequisites,
 		},
 		nil
 }
@@ -478,12 +482,19 @@ func getOrderedComponentsList(
 	modelSetName string,
 	defaultComponent string,
 	comps []*conf.ServiceConfig,
-) ([]string, error) {
+) ([]string, map[string][]string, error) {
 
 	orderedList := make([]string, 0)
 	compNameToModelName := make(map[string]string, 0)
 
 	g := tsort.New()
+	// adj[v] lists the vertices that must be applied before v (the same
+	// edges as the sort graph: an edge v -> w means "w first").
+	adj := make(map[string][]string)
+	addEdge := func(v, w string) {
+		g.AddEdge(v, w)
+		adj[v] = append(adj[v], w)
+	}
 
 	for _, comp := range comps {
 		model := comp.ModelByModelSet[modelSetName]
@@ -496,19 +507,39 @@ func getOrderedComponentsList(
 			if before == "" {
 				continue
 			}
-			g.AddEdge(removeServiceSuffix(before), comp.Name)
+			addEdge(removeServiceSuffix(before), comp.Name)
 		}
 		for _, after := range comp.After {
 			if after == "" {
 				continue
 			}
-			g.AddEdge(comp.Name, removeServiceSuffix(after))
+			addEdge(comp.Name, removeServiceSuffix(after))
 		}
 	}
 
 	orderedComponents, err := g.Sort()
 	if err != nil {
-		return nil, fmt.Errorf("Unable to order components.")
+		return nil, nil, fmt.Errorf("Unable to order components.")
+	}
+
+	// Transitive prerequisites per component, walking through vertices that
+	// are not components (targets and other units) as well.
+	prerequisites := make(map[string][]string)
+	for svc, model := range compNameToModelName {
+		seen := map[string]bool{svc: true}
+		stack := append([]string(nil), adj[svc]...)
+		for len(stack) > 0 {
+			v := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			if seen[v] {
+				continue
+			}
+			seen[v] = true
+			stack = append(stack, adj[v]...)
+			if other, ok := compNameToModelName[v]; ok && other != model {
+				prerequisites[model] = append(prerequisites[model], other)
+			}
+		}
 	}
 
 	for _, name := range orderedComponents {
@@ -517,5 +548,5 @@ func getOrderedComponentsList(
 		}
 	}
 
-	return orderedList, nil
+	return orderedList, prerequisites, nil
 }
