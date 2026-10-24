@@ -67,14 +67,14 @@ type AcmV1Rule struct {
 }
 type AcmV1RpcRule struct {
 	RuleNumber uint32   `rfc7951:"rule-number" json:"-"`
-	Rpc        *string  `rfc7951:"rpc-name" json:"rpc-name"`
+	Rpc        *string  `rfc7951:"rpc-name,omitempty" json:"rpc-name"`
 	Module     string   `rfc7951:"module-name,omitempty"`
 	Action     Action   `rfc7951:"action,omitempty" json:"action"`
 	Groups     []string `rfc7951:"group,omitempty" json:"groups"`
 }
 type AcmV1NotificationRule struct {
 	RuleNumber   uint32   `rfc7951:"rule-number" json:"-"`
-	Notification *string  `rfc7951:"notification-name" json:"notification-name"`
+	Notification *string  `rfc7951:"notification-name,omitempty" json:"notification-name"`
 	Module       string   `rfc7951:"module-name,omitempty"`
 	Action       Action   `rfc7951:"action,omitempty" json:"action"`
 	Groups       []string `rfc7951:"group,omitempty" json:"groups"`
