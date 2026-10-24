@@ -73,6 +73,13 @@ func TestGetterEqualsSentPayload(t *testing.T) {
 		"rpc and notification rules without action or group": wrap(`"` + cfgNS + `rpc-ruleset":{"rule":[` +
 			`{"rule-number":1,"rpc-name":"x"}]},"` +
 			cfgNS + `notification-ruleset":{"rule":[{"rule-number":3,"notification-name":"n"}]}`),
+		"rpc rule without rpc-name": wrap(`"` + cfgNS + `rpc-ruleset":{"rule":[` +
+			`{"rule-number":1,"action":"allow","group":["g"]}]}`),
+		"notification rule without notification-name": wrap(`"` + cfgNS + `notification-ruleset":{"rule":[` +
+			`{"rule-number":1,"action":"deny","group":["g"]}]}`),
+		"rpc and notification rules without name or action": wrap(`"` + cfgNS + `rpc-ruleset":{"rule":[` +
+			`{"rule-number":1,"group":["g"]}]},"` +
+			cfgNS + `notification-ruleset":{"rule":[{"rule-number":3,"group":["g"]}]}`),
 	} {
 		t.Run(name, func(t *testing.T) {
 			s, g := roundTrip(t, sent)
