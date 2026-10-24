@@ -1,3 +1,16 @@
+golang-github-danos-config (1.9danos7) unstable; urgency=medium
+
+  * auth/acmd: an rpc or notification rule without rpc-name /
+    notification-name (YANG: such a rule matches everything) is no longer read
+    back as "rpc-name":null / "notification-name":null. The null made
+    configd's read-back comparison fail, so reconcile reported "Not
+    reconciled: acmd (read-back mismatch)" and the component stayed dirty
+    (found on a real VM after a P1 crash restart). Same cause and fix as the
+    action/operation leaves in 1.9danos6: omitempty on both fields.
+  * Tests: getter round-trip cases for rules without a name.
+
+ -- i-danos dev <dev@i-danos.dev>  Sat, 24 Oct 2026 09:00:00 -0700
+
 golang-github-danos-config (1.9danos6) unstable; urgency=medium
 
   * schema: component compensation on ordinary commit failure (A02 phase 3).
