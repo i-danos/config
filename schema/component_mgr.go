@@ -226,6 +226,10 @@ func (cm *compMgr) ComponentValidation(
 		// Set wait for an earlier unsettled Set (a late write could overwrite),
 		// which a read-only Check cannot do, and registering it would make an
 		// already unresponsive component also skip every later Set as unsettled.
+		// The cost of not registering is that an abandoned Check may still be
+		// in flight when a later Set reaches the same component; that is
+		// harmless because Check only validates the tree it was given and
+		// changes no state. Pinned by TestAbandonedCheckIsNotRegisteredAsPending.
 		err, pc := callBounded(checkCallDeadline, func() error {
 			return cm.CheckConfigForModel(modelName, string(jsonTree))
 		})
