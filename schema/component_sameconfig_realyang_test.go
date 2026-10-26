@@ -4,18 +4,20 @@
 //
 
 // A02 phase 3, stage 3-G: sameConfig against the real acm YANG shipped in the
-// image. Skipped unless DANOS_YANG_DIR names a directory holding the image's
-// YANG files.
+// image. DANOS_YANG_DIR, when set, names a directory holding the image's YANG
+// files and takes precedence. When unset the tests fall back to the vendored
+// copy in testdata/realyang (see its README for provenance), so a plain
+// "go test ./..." -- including debian/rules dh_auto_test -- runs them.
+// A missing fallback directory is a hard failure, never a skip.
 //
-// PRECONDITION: these tests are skipped (t.Skip) when DANOS_YANG_DIR is unset,
-// so a plain "go test ./..." (including debian/rules dh_auto_test) does not
-// run them. Run them with e.g.
+// To run against a different set of YANG files:
 //   DANOS_YANG_DIR=<dir with the image's yang files> go test ./schema/ -run RealAcmYang
 
 package schema
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -24,11 +26,22 @@ const (
 	acmIn = `{"vyatta-system-v1:system":{"` + acmNS + `acm":`
 )
 
-func TestSameConfigRealAcmYang(t *testing.T) {
-	dir := os.Getenv("DANOS_YANG_DIR")
-	if dir == "" {
-		t.Skip("DANOS_YANG_DIR not set")
+// realYangDir returns DANOS_YANG_DIR if set, else the vendored testdata copy.
+func realYangDir(t *testing.T) string {
+	t.Helper()
+	if dir := os.Getenv("DANOS_YANG_DIR"); dir != "" {
+		return dir
 	}
+	dir := filepath.Join("testdata", "realyang")
+	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+		t.Fatalf("DANOS_YANG_DIR not set and fallback %s is unusable: %v",
+			dir, err)
+	}
+	return dir
+}
+
+func TestSameConfigRealAcmYang(t *testing.T) {
+	dir := realYangDir(t)
 	ms, err := getModelSet(t, dir)
 	if ms == nil {
 		t.Fatalf("cannot compile %s: %v", dir, err)
@@ -54,10 +67,7 @@ func TestSameConfigRealAcmYang(t *testing.T) {
 // The shape the 3-G getter used to emit for a rule without action: the empty
 // string is not a valid value, so it cannot be normalised at all.
 func TestSameConfigRealAcmYangRejectsEmptyAction(t *testing.T) {
-	dir := os.Getenv("DANOS_YANG_DIR")
-	if dir == "" {
-		t.Skip("DANOS_YANG_DIR not set")
-	}
+	dir := realYangDir(t)
 	ms, _ := getModelSet(t, dir)
 	doc := acmIn + `{"` + acmNS + `ruleset":{"rule":[{"tagnode":1,"path":"/a","action":"","operation":"read"}]}}}}`
 	if _, err := sameConfig(ms, doc, doc); err == nil {
@@ -72,10 +82,7 @@ func TestSameConfigRealAcmYangRejectsEmptyAction(t *testing.T) {
 // the getter never has to read back such a rule, and if it ever did the
 // result would be a visible verify error, not a quiet mismatch.
 func TestSameConfigRealAcmYangRejectsRuleWithoutOperation(t *testing.T) {
-	dir := os.Getenv("DANOS_YANG_DIR")
-	if dir == "" {
-		t.Skip("DANOS_YANG_DIR not set")
-	}
+	dir := realYangDir(t)
 	ms, _ := getModelSet(t, dir)
 	doc := acmIn + `{"` + acmNS + `ruleset":{"rule":[{"tagnode":1,"path":"/a","action":"deny"}]}}}}`
 	if _, err := sameConfig(ms, doc, doc); err == nil {

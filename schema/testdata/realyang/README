@@ -1,0 +1,47 @@
+Real YANG used by component_sameconfig_realyang_test.go
+=======================================================
+
+These five files are verbatim copies (cp -p, byte-identical) of the YANG that
+ships in the image. They are what the sameConfig tests need: the import closure
+of vyatta-system-acm-v1 plus the module that augments it:
+
+  vyatta-system-acm-configd-v1
+                        imports  vyatta-system-v1, vyatta-system-acm-v1, configd-v1
+                        and augments /system:system/system-acm:acm with
+                        ruleset, rpc-ruleset, notification-ruleset, ... -- the
+                        nodes the tests actually exercise. vyatta-system-acm-v1
+                        itself only defines an EMPTY acm container.
+  vyatta-system-acm-v1  imports  vyatta-system-v1, configd-v1
+  vyatta-system-v1      imports  configd-v1, ietf-yang-types
+  configd-v1            imports  (nothing)
+  ietf-yang-types       imports  (nothing)
+
+Nothing outside these five is imported or needed.
+
+file                        source repo @ commit                                      path in repo
+--------------------------  --------------------------------------------------------  ------------
+vyatta-system-acm-configd-v1.yang  configd @ efe5b6a7dc1a621f3bc203bbba96456b8f57787b  yang/
+vyatta-system-acm-v1.yang   vyatta-cfg @ d82bdad665c6f744f0db3d29b0c0b3aab55b9a6c      yang/
+vyatta-system-v1.yang       vyatta-cfg @ d82bdad665c6f744f0db3d29b0c0b3aab55b9a6c      yang/
+configd-v1.yang             configd    @ efe5b6a7dc1a621f3bc203bbba96456b8f57787b      yang/
+ietf-yang-types.yang        configd    @ efe5b6a7dc1a621f3bc203bbba96456b8f57787b      yang/
+
+Licence / copyright (as stated in each file's own header)
+  vyatta-system-acm-configd-v1.yang, vyatta-system-acm-v1.yang,
+  vyatta-system-v1.yang, configd-v1.yang:
+      AT&T Intellectual Property / Brocade Communications Systems,
+      SPDX-License-Identifier: BSD-3-Clause
+  ietf-yang-types.yang:
+      IETF Trust and the persons identified as authors (Simplified BSD, per the
+      IETF Trust Legal Provisions); AT&T-modified copy as shipped in configd.
+
+Regenerate (from the danos-sources directory, with both repos checked out at the
+commits above):
+
+  D=config/schema/testdata/realyang
+  cp -p vyatta-cfg/yang/vyatta-system-acm-v1.yang vyatta-cfg/yang/vyatta-system-v1.yang $D/
+  cp -p configd/yang/configd-v1.yang configd/yang/ietf-yang-types.yang \
+     configd/yang/vyatta-system-acm-configd-v1.yang $D/
+
+This directory is deliberately separate from testdata/yang, which
+namespace_map_test.go compiles and counts components in; do not merge them.
