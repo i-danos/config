@@ -1320,3 +1320,58 @@ func getFlags(overlay *data.Node) Flags {
 	}
 	return out
 }
+
+// NewDataNodeWithoutDefaults wraps n so that anything walking it as a plain
+// datanode.DataNode (FilterTree, in particular) never sees a node whose value
+// came only from a YANG "default" statement, at any depth.
+//
+// Why: FilterSetTree's result becomes the payload sent to a component on
+// reconcile. union.Node always materialises defaults (that is what lets "show
+// configuration all" display them), so a component that has never been
+// configured still receives e.g. {"vrrp":{"start-delay":0}} -- a real node with
+// a real value, because the leaf's default is instantiated into the tree. The
+// component, having nothing to report, answers its own read-back with {}. The
+// two are compared by sameConfig and never match, which permanently marks the
+// component unverified in the commit journal (R14).
+//
+// This does not change what a user sees (Show/ToJSON callers are untouched);
+// it only changes what reconcile sends.
+func NewDataNodeWithoutDefaults(n Node) datanode.DataNode {
+	return defaultSkippingNode{n}
+}
+
+type defaultSkippingNode struct {
+	Node
+}
+
+func (w defaultSkippingNode) YangDataChildren() []datanode.DataNode {
+	return w.filteredChildren(w.Node.SortedChildren())
+}
+
+func (w defaultSkippingNode) YangDataChildrenNoSorting() []datanode.DataNode {
+	unsorted := w.Node.Children()
+	kids := make([]Node, 0, len(unsorted))
+	for _, c := range unsorted {
+		kids = append(kids, c)
+	}
+	return w.filteredChildren(kids)
+}
+
+// filteredChildren mirrors (*node).yangDataChildren's shape -- the synthetic
+// list-entry key leaf first, then children -- but additionally drops any child
+// whose value is a schema default rather than something actually configured.
+func (w defaultSkippingNode) filteredChildren(kids []Node) []datanode.DataNode {
+	var out []datanode.DataNode
+	if sch, ok := w.Node.GetSchema().(schema.ListEntry); ok {
+		name := sch.Keys()[0]
+		out = append(out, datanode.CreateDataNode(name, nil, []string{w.Node.Name()}))
+	}
+	for _, c := range kids {
+		if c.Default() {
+			continue
+		}
+		out = append(out, defaultSkippingNode{c})
+	}
+	return out
+}
+
