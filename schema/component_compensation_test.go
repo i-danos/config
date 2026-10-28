@@ -760,7 +760,7 @@ func TestForwardDeadlineIsUnknownAndNoSecondCallWhileUnsettled(t *testing.T) {
 	if h.cm.pending.get(compGamma) != nil {
 		t.Fatal("pending mark never cleared")
 	}
-	rep2, errs2 := h.cm.ComponentReconcile(h.ms, h.prev, []string{compGamma}, h.pol, h.rec, nil)
+	rep2, errs2 := h.cm.ComponentReconcile(h.ms, h.prev, nil, []string{compGamma}, h.pol, h.rec, nil)
 	if len(errs2) != 0 || h.result(rep2, compGamma).Forward != OutcomeApplied {
 		t.Fatalf("reconcile after settle: %v %+v", errs2, rep2.Results)
 	}
@@ -856,7 +856,7 @@ func leaveCallPending(h *compHarness, model string) chan struct{} {
 	h.ops.block[model] = release
 	pol := h.pol
 	pol.ForwardCallDeadline = 30 * time.Millisecond
-	h.cm.ComponentReconcile(h.ms, h.prev, []string{model}, pol, h.rec, nil)
+	h.cm.ComponentReconcile(h.ms, h.prev, nil, []string{model}, pol, h.rec, nil)
 	return release
 }
 
@@ -949,7 +949,7 @@ func TestDispatchFinishingAroundTheDeadlineNeverLeavesAFinishedCallPending(t *te
 	slow := &sleepingOps{compOps: h.ops, d: 900 * time.Microsecond}
 	h.cm = NewCompMgr(slow, h.svc, h.ms, h.cm.compMappings)
 	for i := 0; i < 300; i++ {
-		rep, _ := h.cm.ComponentReconcile(h.ms, h.prev, []string{compAlpha}, h.pol, h.rec, nil)
+		rep, _ := h.cm.ComponentReconcile(h.ms, h.prev, nil, []string{compAlpha}, h.pol, h.rec, nil)
 		_ = rep
 		deadline := time.Now().Add(2 * time.Second)
 		for h.cm.pending.get(compAlpha) != nil && time.Now().Before(deadline) {
@@ -966,7 +966,7 @@ func TestDispatchFinishingAroundTheDeadlineNeverLeavesAFinishedCallPending(t *te
 	}
 	// and a normal-deadline dispatch afterwards works
 	h.pol.ForwardCallDeadline = time.Second
-	rep, errs := h.cm.ComponentReconcile(h.ms, h.prev, []string{compAlpha}, h.pol, h.rec, nil)
+	rep, errs := h.cm.ComponentReconcile(h.ms, h.prev, nil, []string{compAlpha}, h.pol, h.rec, nil)
 	if len(errs) != 0 || h.result(rep, compAlpha).Forward != OutcomeApplied {
 		t.Fatalf("%v %+v", errs, rep.Results)
 	}
@@ -1264,7 +1264,7 @@ func (cm *ComponentMappings) nsMapKeyFor(t *testing.T, model string) string {
 func TestReconcileVerifiedWhenReadBackMatches(t *testing.T) {
 	h := newCompHarness(t)
 	h.ops.getter[compAlpha] = `{"vyatta-test-alpha-v1:alphaCont":{"l":"OLDa"}}`
-	rep, errs := h.cm.ComponentReconcile(h.ms, h.prev, []string{compAlpha}, h.pol, h.rec, nil)
+	rep, errs := h.cm.ComponentReconcile(h.ms, h.prev, nil, []string{compAlpha}, h.pol, h.rec, nil)
 	if len(errs) != 0 {
 		t.Fatal(errs)
 	}
@@ -1280,7 +1280,7 @@ func TestReconcileVerifiedWhenReadBackMatches(t *testing.T) {
 func TestReconcileMismatchRetriesThenUnverified(t *testing.T) {
 	h := newCompHarness(t)
 	h.ops.getter[compAlpha] = `{"vyatta-test-alpha-v1:alphaCont":{"l":"SOMETHING ELSE"}}`
-	rep, _ := h.cm.ComponentReconcile(h.ms, h.prev, []string{compAlpha}, h.pol, h.rec, nil)
+	rep, _ := h.cm.ComponentReconcile(h.ms, h.prev, nil, []string{compAlpha}, h.pol, h.rec, nil)
 	r := h.result(rep, compAlpha)
 	if r.Verified != VerifyMismatch {
 		t.Fatalf("alpha: %+v", r)
@@ -1299,7 +1299,7 @@ func TestReconcileMismatchThenMatchOnRetry(t *testing.T) {
 	flip := &flipGetter{compOps: h.ops, model: compAlpha,
 		after: 2, good: `{"vyatta-test-alpha-v1:alphaCont":{"l":"OLDa"}}`}
 	h.cm = NewCompMgr(flip, h.svc, h.ms, h.cm.compMappings)
-	rep, _ := h.cm.ComponentReconcile(h.ms, h.prev, []string{compAlpha}, h.pol, h.rec, nil)
+	rep, _ := h.cm.ComponentReconcile(h.ms, h.prev, nil, []string{compAlpha}, h.pol, h.rec, nil)
 	if r := h.result(rep, compAlpha); r.Verified != VerifyMatched {
 		t.Fatalf("alpha: %+v", r)
 	}
@@ -1326,7 +1326,7 @@ func (f *flipGetter) StoreConfigByModelInto(model string, obj interface{}) error
 func TestReconcileComponentWithoutGetterIsCleanButNotVerifiable(t *testing.T) {
 	h := newCompHarness(t)
 	h.ops.getErr[compAlpha] = mgmterror.NewOperationNotSupportedApplicationError()
-	rep, errs := h.cm.ComponentReconcile(h.ms, h.prev, []string{compAlpha}, h.pol, h.rec, nil)
+	rep, errs := h.cm.ComponentReconcile(h.ms, h.prev, nil, []string{compAlpha}, h.pol, h.rec, nil)
 	if len(errs) != 0 {
 		t.Fatal(errs)
 	}
@@ -1339,7 +1339,7 @@ func TestReconcileComponentWithoutGetterIsCleanButNotVerifiable(t *testing.T) {
 func TestReconcileGetterErrorIsUnverified(t *testing.T) {
 	h := newCompHarness(t)
 	h.ops.getErr[compAlpha] = errors.New("component broke")
-	rep, _ := h.cm.ComponentReconcile(h.ms, h.prev, []string{compAlpha}, h.pol, h.rec, nil)
+	rep, _ := h.cm.ComponentReconcile(h.ms, h.prev, nil, []string{compAlpha}, h.pol, h.rec, nil)
 	if r := h.result(rep, compAlpha); r.Verified != VerifyError {
 		t.Fatalf("alpha: %+v", r)
 	}
@@ -1355,7 +1355,7 @@ func TestReconcileSkipsDependantsOfFailedPrerequisite(t *testing.T) {
 		h.ops.getErr[c] = mgmterror.NewOperationNotSupportedApplicationError()
 	}
 	rep, errs := h.cm.ComponentReconcile(h.ms, h.prev,
-		[]string{compGamma, compBeta, compAlpha}, h.pol, h.rec, nil)
+		nil, []string{compGamma, compBeta, compAlpha}, h.pol, h.rec, nil)
 	if len(errs) != 1 {
 		t.Fatalf("errs: %v", errs)
 	}
@@ -1379,7 +1379,7 @@ func TestReconcileSkipsDependantsOfFailedPrerequisite(t *testing.T) {
 func TestReconcileBeforeDispatchErrorNotSentNotReconciled(t *testing.T) {
 	h := newCompHarness(t)
 	h.rec.beforeErr["alpha/reconcile"] = errors.New("journal gone")
-	rep, errs := h.cm.ComponentReconcile(h.ms, h.prev, []string{compAlpha}, h.pol, h.rec, nil)
+	rep, errs := h.cm.ComponentReconcile(h.ms, h.prev, nil, []string{compAlpha}, h.pol, h.rec, nil)
 	if h.ops.callCount(compAlpha) != 0 {
 		t.Fatal("not sent expected")
 	}
@@ -1427,7 +1427,7 @@ func TestReconcileFailureClassesAreDirtyNeverClean(t *testing.T) {
 	// beta is not a prerequisite-blocked case here: reconcile alpha and gamma
 	// separately from beta by asking for them in one call; alpha fails, beta
 	// (depends on alpha) is blocked, gamma depends on both.
-	rep, _ := h.cm.ComponentReconcile(h.ms, h.prev, []string{compAlpha, compBeta, compGamma}, h.pol, h.rec, nil)
+	rep, _ := h.cm.ComponentReconcile(h.ms, h.prev, nil, []string{compAlpha, compBeta, compGamma}, h.pol, h.rec, nil)
 	if d, ok := dirtyOf(rep, compAlpha); !ok || d.Class != DirtyCompensationFailed {
 		t.Errorf("alpha: %+v ok=%v", d, ok)
 	}
@@ -1437,7 +1437,7 @@ func TestReconcileFailureClassesAreDirtyNeverClean(t *testing.T) {
 	// timeout class, on its own
 	h2 := newCompHarness(t)
 	h2.fail(compAlpha, 1, dbus.Error{Name: "org.freedesktop.DBus.Error.NoReply"})
-	rep2, _ := h2.cm.ComponentReconcile(h2.ms, h2.prev, []string{compAlpha}, h2.pol, h2.rec, nil)
+	rep2, _ := h2.cm.ComponentReconcile(h2.ms, h2.prev, nil, []string{compAlpha}, h2.pol, h2.rec, nil)
 	if d, ok := dirtyOf(rep2, compAlpha); !ok || d.Class != DirtyUnknown || has(rep2.Clean, compAlpha) {
 		t.Errorf("timeout reconcile: dirty=%+v ok=%v clean=%v", d, ok, rep2.Clean)
 	}
@@ -1449,9 +1449,9 @@ func TestReconcileUnsettledEarlierCallIsDirtyUnsettled(t *testing.T) {
 	release := make(chan struct{})
 	h.ops.block[compAlpha] = release
 	// first call times out and stays pending
-	h.cm.ComponentReconcile(h.ms, h.prev, []string{compAlpha}, h.pol, h.rec, nil)
+	h.cm.ComponentReconcile(h.ms, h.prev, nil, []string{compAlpha}, h.pol, h.rec, nil)
 	// second call finds the first one unsettled
-	rep, _ := h.cm.ComponentReconcile(h.ms, h.prev, []string{compAlpha}, h.pol, h.rec, nil)
+	rep, _ := h.cm.ComponentReconcile(h.ms, h.prev, nil, []string{compAlpha}, h.pol, h.rec, nil)
 	close(release)
 	r := h.result(rep, compAlpha)
 	if r.Forward != OutcomeNotSent || r.Note != skipUnsettled {
@@ -1468,7 +1468,7 @@ func TestReconcileBlockedComponentsStayDirtyAndAreNotClean(t *testing.T) {
 	h := newCompHarness(t)
 	h.fail(compAlpha, 1, errors.New("alpha: no"))
 	rep, _ := h.cm.ComponentReconcile(h.ms, h.prev,
-		[]string{compAlpha, compBeta, compGamma}, h.pol, h.rec, nil)
+		nil, []string{compAlpha, compBeta, compGamma}, h.pol, h.rec, nil)
 	for _, c := range []string{compAlpha, compBeta, compGamma} {
 		if has(rep.Clean, c) {
 			t.Errorf("%s must not be clean", c)
@@ -1490,7 +1490,7 @@ func TestReconcileBlockedComponentsStayDirtyAndAreNotClean(t *testing.T) {
 func TestReconcileDialFailureLeavesEverythingDirtyBlocked(t *testing.T) {
 	h := newCompHarness(t)
 	h.ops.dialErr = errors.New("no bus")
-	rep, errs := h.cm.ComponentReconcile(h.ms, h.prev, []string{compAlpha, compBeta}, h.pol, h.rec, nil)
+	rep, errs := h.cm.ComponentReconcile(h.ms, h.prev, nil, []string{compAlpha, compBeta}, h.pol, h.rec, nil)
 	if len(errs) != 1 || len(h.ops.calls) != 0 {
 		t.Fatalf("%v %v", errs, h.ops.calls)
 	}
@@ -1550,7 +1550,7 @@ func TestCompensateReportDialFailureKeepsAppliedComponentsDirty(t *testing.T) {
 
 func TestReconcileUnknownRequestedComponentIsNoted(t *testing.T) {
 	h := newCompHarness(t)
-	rep, _ := h.cm.ComponentReconcile(h.ms, h.prev, []string{compAlpha, "net.vyatta.test.ghost", compAlpha},
+	rep, _ := h.cm.ComponentReconcile(h.ms, h.prev, nil, []string{compAlpha, "net.vyatta.test.ghost", compAlpha},
 		h.pol, h.rec, nil)
 	if len(rep.Results) != 1 || len(rep.Notes) != 1 {
 		t.Fatalf("results=%+v notes=%v", rep.Results, rep.Notes)
@@ -1568,7 +1568,7 @@ func TestReconcileReadBackSemanticallyEquivalentSpellingsMatch(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			h := newCompHarness(t)
 			h.ops.getter[compAlpha] = got
-			rep, _ := h.cm.ComponentReconcile(h.ms, h.prev, []string{compAlpha}, h.pol, h.rec, nil)
+			rep, _ := h.cm.ComponentReconcile(h.ms, h.prev, nil, []string{compAlpha}, h.pol, h.rec, nil)
 			if r := h.result(rep, compAlpha); r.Verified != VerifyMatched {
 				t.Fatalf("%s: %+v (sent %v)", name, r, h.ops.payload[compAlpha])
 			}
@@ -1584,7 +1584,7 @@ func TestReconcileReadBackDifferentValueOrExtraContainerMismatches(t *testing.T)
 		t.Run(name, func(t *testing.T) {
 			h := newCompHarness(t)
 			h.ops.getter[compAlpha] = got
-			rep, _ := h.cm.ComponentReconcile(h.ms, h.prev, []string{compAlpha}, h.pol, h.rec, nil)
+			rep, _ := h.cm.ComponentReconcile(h.ms, h.prev, nil, []string{compAlpha}, h.pol, h.rec, nil)
 			if r := h.result(rep, compAlpha); r.Verified != VerifyMismatch {
 				t.Fatalf("%s: %+v", name, r)
 			}
@@ -1600,7 +1600,7 @@ func TestReconcileReadBackUnparsableAnswerIsVerificationError(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			h := newCompHarness(t)
 			h.ops.getter[compAlpha] = got
-			rep, _ := h.cm.ComponentReconcile(h.ms, h.prev, []string{compAlpha}, h.pol, h.rec, nil)
+			rep, _ := h.cm.ComponentReconcile(h.ms, h.prev, nil, []string{compAlpha}, h.pol, h.rec, nil)
 			r := h.result(rep, compAlpha)
 			if r.Verified != VerifyError || r.ForwardErr == nil ||
 				!strings.Contains(r.ForwardErr.Error(), "read back") {

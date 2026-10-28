@@ -350,6 +350,7 @@ type CompensatingComponentManager interface {
 	ComponentReconcile(
 		m ModelSet,
 		target func() datanode.DataNode,
+		cmpTarget func() datanode.DataNode,
 		components []string,
 		policy CompensationPolicy,
 		rec DispatchRecorder,
@@ -1044,6 +1045,7 @@ func (cm *ComponentMappings) Prerequisites(component string) []string {
 func (cm *compMgr) ComponentReconcile(
 	m ModelSet,
 	target func() datanode.DataNode,
+	cmpTarget func() datanode.DataNode,
 	components []string,
 	policy CompensationPolicy,
 	rec DispatchRecorder,
@@ -1085,6 +1087,14 @@ func (cm *compMgr) ComponentReconcile(
 	}
 
 	tgt := target()
+	// The same document with the schema defaults left out. It is never sent:
+	// it exists so the read-back comparison can tell "the component echoed a
+	// default" from "the component has different configuration" (R14, see
+	// sameConfigAllowDefaulted).
+	cmpTgt := datanode.DataNode(nil)
+	if cmpTarget != nil {
+		cmpTgt = cmpTarget()
+	}
 	notDone := map[string]bool{}
 	for ix, c := range ordered {
 		r := &report.Results[ix]
@@ -1103,7 +1113,11 @@ func (cm *compMgr) ComponentReconcile(
 		startTime := time.Now()
 		comp := cm.compMappings.Component(c)
 		payload := string(comp.FilterSetTree(m, tgt))
-		cm.reconcileOne(m, r, c, payload, pol, rec)
+		cmpPayload := payload
+		if cmpTgt != nil {
+			cmpPayload = string(comp.FilterSetTree(m, cmpTgt))
+		}
+		cm.reconcileOne(m, r, c, payload, cmpPayload, pol, rec)
 		if commitLogFn != nil {
 			commitLogFn(fmt.Sprintf("Reconcile %s", c), startTime)
 		}
@@ -1129,7 +1143,7 @@ func (cm *compMgr) ComponentReconcile(
 func (cm *compMgr) reconcileOne(
 	m ModelSet,
 	r *ComponentResult,
-	component, payload string,
+	component, payload, cmpPayload string,
 	pol CompensationPolicy,
 	rec DispatchRecorder,
 ) {
@@ -1155,7 +1169,7 @@ func (cm *compMgr) reconcileOne(
 			r.ForwardErr = err
 			return
 		}
-		same, nerr := sameConfig(m, payload, got)
+		same, nerr := sameConfigAllowDefaulted(m, payload, cmpPayload, got)
 		if nerr != nil {
 			// What the component returned (or what was sent) cannot be
 			// interpreted through the schema: that is not a mismatch we can
@@ -1195,6 +1209,119 @@ func sameConfig(m ModelSet, a, b string) (bool, error) {
 	}
 	return na == nb, nil
 }
+
+// sameConfigAllowDefaulted compares the configuration that was sent with what
+// the component read back, ignoring the parts of the sent document that only
+// exist because the schema gives them a default AND that the component echoed
+// back unchanged.
+//
+// Why this is not simply sameConfig: the document sent to a component is built
+// from a union tree, which materialises every YANG default (that is what lets
+// "show configuration all" display them). A component that has never been
+// configured reports only what it actually has -- vrrp answers "{}" -- so a
+// byte comparison of the two says "mismatch" forever and the component sits in
+// the journal's dirty set permanently (R14).
+//
+// Why not simply stop sending the defaults: components read the payload as
+// their configuration, and several require the containers to be present.
+// Sending "{}" made vrrp fail with "Error: 'vyatta-interfaces-v1:interfaces'"
+// and kdump with "Error: No kernel crash dump configuration.", turning one
+// stuck component into two failures. The document a component receives is not
+// the thing that is wrong; the comparison is.
+//
+// stripped is the same document built from a tree with defaults removed: the
+// difference between it and full is exactly the set of defaulted paths. Those
+// paths are removed from the read-back too, but only where the read-back agrees
+// with the default value -- a component that reports a different value there
+// has real configuration and must still fail the comparison.
+func sameConfigAllowDefaulted(m ModelSet, full, stripped, got string) (bool, error) {
+	nf, err := normaliseConfig(m, full)
+	if err != nil {
+		return false, fmt.Errorf("cannot normalise the configuration sent: %s", err)
+	}
+	ns, err := normaliseConfig(m, stripped)
+	if err != nil {
+		return false, fmt.Errorf("cannot normalise the configuration sent: %s", err)
+	}
+	ng, err := normaliseConfig(m, got)
+	if err != nil {
+		return false, fmt.Errorf("cannot normalise the configuration read back: %s", err)
+	}
+	if nf == ns {
+		return ng == ns, nil
+	}
+	return pruneAndCompare(nf, ns, ng)
+}
+
+// pruneAndCompare is the comparison itself, on already-normalised documents.
+// Split out so it can be tested without a model set.
+func pruneAndCompare(full, stripped, got string) (bool, error) {
+	if full == stripped {
+		return got == stripped, nil
+	}
+	var vf, vs, vg interface{}
+	for _, p := range []struct {
+		s string
+		d *interface{}
+	}{{full, &vf}, {stripped, &vs}, {got, &vg}} {
+		dec := json.NewDecoder(strings.NewReader(p.s))
+		dec.UseNumber()
+		if err := dec.Decode(p.d); err != nil {
+			return false, fmt.Errorf("cannot re-read the normalised configuration: %s", err)
+		}
+	}
+	pruneDefaulted(vg, vf, vs)
+	return canonEqual(vg, vs), nil
+}
+
+// pruneDefaulted walks the read-back and deletes every path that exists in the
+// full document but not in the stripped one, when the read-back holds the same
+// value the full document had there. Nodes whose value differs are left alone:
+// the comparison must still see them.
+func pruneDefaulted(got, full, stripped interface{}) {
+	gm, ok := got.(map[string]interface{})
+	if !ok {
+		return
+	}
+	fm, fok := full.(map[string]interface{})
+	sm, sok := stripped.(map[string]interface{})
+	for k, gv := range gm {
+		fv, hasFull := lookup(fm, fok, k)
+		sv, hasStrip := lookup(sm, sok, k)
+		if hasFull && !hasStrip {
+			// Defaulted on the sent side: drop it if the component echoed it
+			// unchanged, keep it (so it can be compared) if it did not.
+			if canonEqual(gv, fv) {
+				delete(gm, k)
+			}
+			continue
+		}
+		if hasFull && hasStrip {
+			pruneDefaulted(gv, fv, sv)
+		}
+	}
+}
+
+func lookup(m map[string]interface{}, ok bool, k string) (interface{}, bool) {
+	if !ok {
+		return nil, false
+	}
+	v, has := m[k]
+	return v, has
+}
+
+func canonEqual(a, b interface{}) bool {
+	ba, err := json.Marshal(a)
+	if err != nil {
+		return false
+	}
+	bb, err := json.Marshal(b)
+	if err != nil {
+		return false
+	}
+	return string(ba) == string(bb)
+}
+
 
 func normaliseConfig(m ModelSet, doc string) (string, error) {
 	dn, err := encoding.UnmarshalJSON(m, []byte(doc))
