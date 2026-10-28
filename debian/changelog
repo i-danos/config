@@ -1,3 +1,24 @@
+golang-github-danos-config (1.9danos8) unstable; urgency=medium
+
+  * union: reconcile's FilterSetTree target no longer sends components
+    their own YANG-default leaves. A union.Node always materialises
+    defaults (needed so "show configuration all" can display them), but
+    reconcile's comparison against a component's own read-back used that
+    same raw node, so a component that was never configured still got a
+    payload with its defaults filled in while its read-back reported {}.
+    sameConfig never matched, and the component stayed permanently
+    "unverified" in the commit journal (R14, seen on vrrp after a P2/P4
+    crash restart: "dirty": {"net.vyatta.vci.vrrp.v1": {"reason":
+    "read-back mismatch"}}). NewDataNodeWithoutDefaults wraps a union.Node
+    to recursively omit default-only values (at any depth) while still
+    exposing anything actually configured; only the reconcile target uses
+    it, so "show configuration" and friends are unaffected.
+  * Tests: 3 new union tests (fixture leaks defaults as a sanity check;
+    wrapper omits them; wrapper keeps explicitly configured leaves;
+    wrapper recurses into all-default non-presence containers).
+
+ -- i-danos dev <dev@i-danos.dev>  Wed, 28 Oct 2026 00:00:00 -0700
+
 golang-github-danos-config (1.9danos7) unstable; urgency=medium
 
   * auth/acmd: an rpc or notification rule without rpc-name /
