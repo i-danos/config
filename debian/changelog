@@ -1,3 +1,21 @@
+golang-github-danos-config (1.9danos9) unstable; urgency=medium
+
+  * schema: reconcile's read-back comparison (sameConfig) now ignores a
+    sent subtree when it is only a schema default AND the component
+    echoed it back unchanged -- real configuration a component reports
+    differently is still compared and still fails as before.
+    sameConfigAllowDefaulted replaces the plain byte comparison for
+    reconcile specifically; the payload itself is unchanged (1.9danos8's
+    attempt to send a defaults-stripped payload made vrrp and kdump
+    reject an empty document outright, turning one stuck component into
+    two failures -- reverted here, replaced by this approach).
+  * Tests: 6 new cases in component_defaults_test.go (empty read-back vs
+    an all-default payload, echoed defaults, a default overridden by real
+    configuration, non-default content still compared, plain equality
+    with no defaults, extra read-back content never sent).
+
+ -- i-danos dev <dev@i-danos.dev>  Wed, 28 Oct 2026 04:30:00 -0700
+
 golang-github-danos-config (1.9danos8) unstable; urgency=medium
 
   * union: reconcile's FilterSetTree target no longer sends components
