@@ -1,3 +1,21 @@
+golang-github-danos-config (1.9danos10) unstable; urgency=medium
+
+  * schema: the reconcile read-back comparison (sameConfigAllowDefaulted)
+    now also removes echoed schema defaults inside list entries. 1.9danos9
+    walked JSON objects only and stopped at the first array, so a default
+    leaf in a list entry (acm rule "action", default "deny") survived in
+    the read-back and a component that echoed exactly what it was sent
+    still compared unequal: acmd and provisiond stayed "unverified /
+    read-back mismatch" after a crash restart (p2p4: 74/81).
+    List entries are paired by content, not position (a system-ordered
+    list is sorted by each entry's own spelling, which differs between the
+    full and the stripped document) and the pruned read-back is normalised
+    again before the comparison. A changed, removed or unsent entry still
+    fails the comparison.
+  * Tests: 6 new cases in component_defaults_test.go.
+
+ -- i-danos dev <dev@i-danos.dev>  Thu, 29 Oct 2026 14:30:00 -0700
+
 golang-github-danos-config (1.9danos9) unstable; urgency=medium
 
   * schema: reconcile's read-back comparison (sameConfig) now ignores a
