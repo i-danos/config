@@ -183,7 +183,17 @@ type compHarness struct {
 }
 
 func newCompHarness(t *testing.T) *compHarness {
+	return newCompHarnessWithAlpha(t, "")
+}
+
+// newCompHarnessWithAlpha is newCompHarness with the body of alpha's YANG
+// replaced by alphaYang (a complete "container alphaCont {...}" statement)
+// when it is not empty.
+func newCompHarnessWithAlpha(t *testing.T, alphaYang string) *compHarness {
 	snippet := func(cont string) string {
+		if cont == "alphaCont" && alphaYang != "" {
+			return alphaYang
+		}
 		return "container " + cont + " { leaf l { type string; } }"
 	}
 	schemas := []*testutils.TestSchema{

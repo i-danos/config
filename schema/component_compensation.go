@@ -1250,7 +1250,18 @@ func sameConfigAllowDefaulted(m ModelSet, full, stripped, got string) (bool, err
 	if nf == ns {
 		return ng == ns, nil
 	}
-	return pruneAndCompare(nf, ns, ng)
+	pruned, err := pruneDefaultedJSON(nf, ns, ng)
+	if err != nil {
+		return false, err
+	}
+	// Pruning changes list entries, and a system-ordered list is sorted by its
+	// entries' own spelling, so the order may now differ from the stripped
+	// document's: normalise again to put both in the schema's canonical order.
+	np, err := normaliseConfig(m, pruned)
+	if err != nil {
+		return false, fmt.Errorf("cannot normalise the pruned read-back: %s", err)
+	}
+	return np == ns, nil
 }
 
 // pruneAndCompare is the comparison itself, on already-normalised documents.
@@ -1259,19 +1270,43 @@ func pruneAndCompare(full, stripped, got string) (bool, error) {
 	if full == stripped {
 		return got == stripped, nil
 	}
+	pruned, err := pruneDefaultedJSON(full, stripped, got)
+	if err != nil {
+		return false, err
+	}
+	var vp, vs interface{}
+	if err := decodeNumber(pruned, &vp); err != nil {
+		return false, err
+	}
+	if err := decodeNumber(stripped, &vs); err != nil {
+		return false, err
+	}
+	return canonEqual(vp, vs), nil
+}
+
+func decodeNumber(doc string, v *interface{}) error {
+	dec := json.NewDecoder(strings.NewReader(doc))
+	dec.UseNumber()
+	if err := dec.Decode(v); err != nil {
+		return fmt.Errorf("cannot re-read the normalised configuration: %s", err)
+	}
+	return nil
+}
+
+// pruneDefaultedJSON returns got with every echoed default removed.
+func pruneDefaultedJSON(full, stripped, got string) (string, error) {
 	var vf, vs, vg interface{}
 	for _, p := range []struct {
 		s string
 		d *interface{}
 	}{{full, &vf}, {stripped, &vs}, {got, &vg}} {
-		dec := json.NewDecoder(strings.NewReader(p.s))
-		dec.UseNumber()
-		if err := dec.Decode(p.d); err != nil {
-			return false, fmt.Errorf("cannot re-read the normalised configuration: %s", err)
+		if err := decodeNumber(p.s, p.d); err != nil {
+			return "", err
 		}
 	}
 	pruneDefaulted(vg, vf, vs)
-	return canonEqual(vg, vs), nil
+	b, err := json.Marshal(vg)
+	return string(b), err
 }
 
 // pruneDefaulted walks the read-back and deletes every path that exists in the
@@ -1279,6 +1314,30 @@ func pruneAndCompare(full, stripped, got string) (bool, error) {
 // value the full document had there. Nodes whose value differs are left alone:
 // the comparison must still see them.
 func pruneDefaulted(got, full, stripped interface{}) {
+	if ga, ok := got.([]interface{}); ok {
+		// List entries carry defaults too (acm rule "action", ...). Entries are
+		// paired by content, not by position: a system-ordered list is sorted by
+		// each entry's own spelling, which differs between the full and the
+		// stripped document. An entry the component changed in a non-default
+		// leaf no longer contains its stripped counterpart, stays unpaired and
+		// is left untouched, so the comparison still fails on it.
+		fa, _ := full.([]interface{})
+		sa, _ := stripped.([]interface{})
+		for _, g := range ga {
+			gm, ok := g.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			s := findSubset(gm, sa)
+			if s == nil {
+				continue
+			}
+			if f := findSuperset(s, fa); f != nil {
+				pruneDefaulted(gm, f, s)
+			}
+		}
+		return
+	}
 	gm, ok := got.(map[string]interface{})
 	if !ok {
 		return
@@ -1300,6 +1359,72 @@ func pruneDefaulted(got, full, stripped interface{}) {
 			pruneDefaulted(gv, fv, sv)
 		}
 	}
+}
+
+// findSubset returns the first entry of cands whose every member is in sup.
+func findSubset(sup map[string]interface{}, cands []interface{}) map[string]interface{} {
+	for _, c := range cands {
+		if cm, ok := c.(map[string]interface{}); ok && contains(sup, cm) {
+			return cm
+		}
+	}
+	return nil
+}
+
+// findSuperset returns the first entry of cands that contains every member of sub.
+func findSuperset(sub map[string]interface{}, cands []interface{}) map[string]interface{} {
+	for _, c := range cands {
+		if cm, ok := c.(map[string]interface{}); ok && contains(cm, sub) {
+			return cm
+		}
+	}
+	return nil
+}
+
+// contains reports whether every member of sub is present in sup with an equal
+// value (recursively for objects and for arrays of objects).
+func contains(sup, sub map[string]interface{}) bool {
+	for k, sv := range sub {
+		pv, ok := sup[k]
+		if !ok {
+			return false
+		}
+		switch sv := sv.(type) {
+		case map[string]interface{}:
+			pm, ok := pv.(map[string]interface{})
+			if !ok || !contains(pm, sv) {
+				return false
+			}
+		case []interface{}:
+			pa, ok := pv.([]interface{})
+			if !ok {
+				return false
+			}
+			for _, se := range sv {
+				found := false
+				for _, pe := range pa {
+					if sem, ok := se.(map[string]interface{}); ok {
+						if pem, ok := pe.(map[string]interface{}); ok && contains(pem, sem) {
+							found = true
+						}
+					} else if canonEqual(se, pe) {
+						found = true
+					}
+					if found {
+						break
+					}
+				}
+				if !found {
+					return false
+				}
+			}
+		default:
+			if !canonEqual(sv, pv) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func lookup(m map[string]interface{}, ok bool, k string) (interface{}, bool) {
